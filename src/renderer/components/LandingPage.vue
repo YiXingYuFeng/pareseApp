@@ -1,23 +1,29 @@
 <template>
   <div id="wrapper">
-    <el-form :inline="true" >
-      <el-form-item label="文件名称">
-        <el-input v-model="fileName" placeholder="请输入内容" style="width: 300px;"></el-input>
-      </el-form-item>
-      <el-form-item>
-      <el-button @click='resolvingData' type="primary">开始解析</el-button>
-      </el-form-item>
-    </el-form>
-    <el-row>
-      <p>解析进度：</p>
-      <el-progress :percentage="percentage"></el-progress>
-    </el-row>
+    <el-input v-model="filePath"  placeholder="请输入访问文件夹绝对路径"/>
+    <el-button @click="inputChange">查找文件</el-button>
+    <el-table
+        :data="tableData"
+        border
+        style="width: 100%">
+      <el-table-column label="文件名" prop="name"/>
+      <el-table-column label="处理进度" prop="progress"/>
+      <el-table-column>
+        <template slot-scope="scope">
+          <el-button @click="analysisFile(scope.row, scope.$index)" type="text" size="small">解析</el-button>
+        </template>
+      </el-table-column>
+    </el-table>
     <chart ref="chart" :volumeBrokenLineBos="volumeBrokenLineBos"/>
   </div>
 </template>
 
 <script>
 import chart from './chart'
+const fs = require('fs')
+const path = require('path')
+const xlsx = require('node-xlsx')
+
 export default {
   name: 'landing-page',
   components: { chart },
@@ -26,29 +32,36 @@ export default {
       tableData: [],
       volumeBrokenLineBos: [],
       fileName: '',
-      percentage: 0
+      percentage: 0,
+      dirPath: '',
+      num: 0,
+      filePath: '' // 文件路径
     }
   },
+  mounted () {},
   methods: {
-    resolvingData () {
-      const fs = require('fs')
-      const path = require('path')
-      const xlsx = require('node-xlsx')
-      const uploadDir = path.resolve(__dirname, '../../../', 'excelFile')
+    inputChange () {
+      this.$message('开始查找')
+      this.dirPath = path.resolve(__dirname, this.filePath)
+      this.$message('当前解析读取文件地址:', this.dirPath)
+      this.readDir()
+    },
+    resolvingData (index) {
       const _this = this
-
-      const filePath = path.resolve(uploadDir, _this.fileName)
+      const filePath = path.resolve(_this.dirPath, _this.fileName)
       const workSheetsFromFile = xlsx.parse(fs.readFileSync(filePath))
       const JSONKey = ['index', 'referenceName', 'datetime', 'actualVolume', 'predictionVolume', 'predictionVolumeMin', 'predictionVolumeMax']
       const finalArr = []
       // 表内容
       const excelSheet = workSheetsFromFile[0].data
       const jsonData = excelSheet.slice(1)
+      console.info('当前解析文件的进度', _this.tableData[index]['progress'])
+      let progress = _this.tableData[index]['progress']
       jsonData.forEach(lineItem => {
         const arrItem = {}
         lineItem.forEach((item, index) => {
-          if (_this.percentage < 100) {
-            _this.percentage += 1
+          if (progress < 100) {
+            progress += 1
           }
           Object.assign(arrItem, {
             [JSONKey[index]]: item || '-'
@@ -56,7 +69,31 @@ export default {
         })
         finalArr.push(arrItem)
       })
+      _this.$set(_this.tableData[index], 'progress', progress)
       _this.volumeBrokenLineBos = finalArr
+    },
+    // 读取文件夹中文件名
+    readDir () {
+      this.tableData = []
+      fs.readdir(this.dirPath, (err, files) => {
+        if (err) {
+          console.log(err)
+        } else {
+          files.map(item => {
+            this.tableData.push({
+              name: item,
+              progress: 0
+            })
+          })
+        }
+      })
+    },
+    // 开始解析文件
+    analysisFile (row, index) {
+      console.info('开始解析文件', row, index)
+      this.fileName = row.name
+      this.$set(this.tableData[index], 'progress', 0)
+      this.resolvingData(index)
     }
   }
 }
